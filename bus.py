@@ -217,3 +217,63 @@ def preprocess_data(df):
     print(f"\n✅ Preprocessing Complete! Final shape: {df_processed.shape}")
     return df_processed, label_encoders, minmax_scaler
 
+# 3. FEATURE PREPARATION
+def prepare_features_for_ml(df_processed):
+    """Prepare features and target variable."""
+    print("\n" + "=" * 70)
+    print("STEP 4: PREPARING FEATURES FOR MACHINE LEARNING")
+    print("=" * 70)
+
+    feature_columns = [
+        'bus_stop_encoded', 'deviceid_encoded', 'time_period_encoded',
+        'direction_encoded',
+        'arrival_hour', 'arrival_minute', 'day_of_week', 'month', 'day',
+        'seconds_since_midnight',
+        'is_peak_hour', 'is_weekend', 'is_weekday',
+        'actual_dwell_time', 'prev_travel_time', 'prev_dwell_time',
+        'actual_dwell_time_norm', 'prev_travel_time_norm', 'prev_dwell_time_norm',
+    ]
+
+    feature_columns = [c for c in feature_columns if c in df_processed.columns]
+
+    print(f"\n📋 Selected {len(feature_columns)} Features:")
+    for i, f in enumerate(feature_columns, 1):
+        print(f"   {i:2d}. {f}")
+
+    X = df_processed[feature_columns].copy()
+    y = df_processed['travel_time_to_next_stop'].copy()
+
+    # Ensure no NaN in features
+    X = X.fillna(X.median())
+
+    print(f"\n✓ Feature matrix: {X.shape}, Target vector: {y.shape}")
+    return feature_columns, X, y
+
+
+# 4. MODEL TRAINING & COMPARATIVE ANALYSIS
+
+def compute_regression_metrics(y_true, y_pred, label=""):
+    """Compute and display all regression metrics."""
+    mae   = mean_absolute_error(y_true, y_pred)
+    mse   = mean_squared_error(y_true, y_pred)
+    rmse  = np.sqrt(mse)
+    r2    = r2_score(y_true, y_pred)
+    mape  = mean_absolute_percentage_error(y_true, y_pred) * 100
+
+    # Within-threshold accuracy 
+    threshold = 2.0
+    within_thresh = np.mean(np.abs(y_true - y_pred) <= threshold) * 100
+
+    if label:
+        print(f"\n   📊 {label}:")
+    print(f"      MAE   (Mean Absolute Error)        : {mae:.4f} min")
+    print(f"      MSE   (Mean Squared Error)          : {mse:.4f} min²")
+    print(f"      RMSE  (Root Mean Squared Error)     : {rmse:.4f} min")
+    print(f"      R²    (Coefficient of Determination): {r2:.4f}")
+    print(f"      MAPE  (Mean Abs Percentage Error)   : {mape:.2f}%")
+    print(f"      Accuracy within ±{threshold} min      : {within_thresh:.2f}%")
+
+    return {
+        'mae': mae, 'mse': mse, 'rmse': rmse,
+        'r2': r2, 'mape': mape, 'within_threshold': within_thresh
+    }
