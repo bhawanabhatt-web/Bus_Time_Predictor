@@ -201,3 +201,106 @@ class BusTrackerApp(ctk.CTk):
             self.after(900, pulse)
 
         pulse()
+
+    # ── Search Section ───────────────────────────
+    def create_search_section(self, parent):
+        search_frame = ctk.CTkFrame(parent, fg_color=self.colors['dark'],
+                                     corner_radius=15,
+                                     border_width=1,
+                                     border_color="#2D4A7A")
+        search_frame.pack(fill="x", pady=(0, 10))
+
+        inner = ctk.CTkFrame(search_frame, fg_color="transparent")
+        inner.pack(fill="both", padx=24, pady=14)
+
+        stop_values = [str(x) for x in self.bus_stops] if self.bus_stops else ["No stops available"]
+
+        # Pickup + arrow + Destination side by side
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 10))
+
+        # Pickup
+        pickup_col = ctk.CTkFrame(row, fg_color="transparent")
+        pickup_col.pack(side="left", expand=True, fill="x")
+
+        ctk.CTkLabel(pickup_col, text="📍  Pickup Bus Stop",
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=self.colors['accent']).pack(anchor="w", pady=(0, 4))
+
+        self.pickup_combo = ctk.CTkComboBox(
+            pickup_col, values=stop_values,
+            height=36,
+            font=ctk.CTkFont(size=13),
+            dropdown_font=ctk.CTkFont(size=12),
+            fg_color=self.colors['darker'],
+            border_color=self.colors['secondary'],
+            border_width=2,
+            button_color=self.colors['secondary'],
+            button_hover_color=self.colors['accent'],
+            dropdown_fg_color=self.colors['dark'],
+            corner_radius=10)
+        self.pickup_combo.pack(fill="x")
+        self.pickup_combo.set("Select pickup location")
+
+        # Arrow
+        arrow_col = ctk.CTkFrame(row, fg_color="transparent", width=60)
+        arrow_col.pack(side="left", fill="y", padx=10)
+        arrow_col.pack_propagate(False)
+        ctk.CTkLabel(arrow_col, text="→",
+                     font=ctk.CTkFont(size=22),
+                     text_color=self.colors['secondary']).pack(expand=True)
+
+        # Destination
+        dest_col = ctk.CTkFrame(row, fg_color="transparent")
+        dest_col.pack(side="left", expand=True, fill="x")
+
+        ctk.CTkLabel(dest_col, text="🎯  Destination Bus Stop",
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=self.colors['accent']).pack(anchor="w", pady=(0, 4))
+
+        self.destination_combo = ctk.CTkComboBox(
+            dest_col, values=stop_values,
+            height=36,
+            font=ctk.CTkFont(size=13),
+            dropdown_font=ctk.CTkFont(size=12),
+            fg_color=self.colors['darker'],
+            border_color=self.colors['secondary'],
+            border_width=2,
+            button_color=self.colors['secondary'],
+            button_hover_color=self.colors['accent'],
+            dropdown_fg_color=self.colors['dark'],
+            corner_radius=10)
+        self.destination_combo.pack(fill="x")
+        self.destination_combo.set("Select destination")
+
+        # Search button + stats strip
+        bottom = ctk.CTkFrame(inner, fg_color="transparent")
+        bottom.pack(fill="x")
+
+        self.search_button = ctk.CTkButton(
+            bottom,
+            text="🔍  Search Buses",
+            command=self.search_buses,
+            width=200, height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=self.colors['secondary'],
+            hover_color=self.colors['accent'],
+            corner_radius=12)
+        self.search_button.pack(side="left")
+
+        stats = ctk.CTkFrame(bottom, fg_color=self.colors['darker'],
+                              corner_radius=12)
+        stats.pack(side="right")
+
+        for icon, val, lbl in [("🚌", str(len(self.buses)), "Buses"),
+                                ("📍", str(len(self.bus_stops)), "Stops"),
+                                ("🤖", "AI", "Powered")]:
+            col = ctk.CTkFrame(stats, fg_color="transparent")
+            col.pack(side="left", padx=14, pady=7)
+            ctk.CTkLabel(col, text=icon, font=ctk.CTkFont(size=15)).pack()
+            ctk.CTkLabel(col, text=val,
+                         font=ctk.CTkFont(size=12, weight="bold"),
+                         text_color=self.colors['secondary']).pack()
+            ctk.CTkLabel(col, text=lbl,
+                         font=ctk.CTkFont(size=9),
+                         text_color=self.colors['subtext']).pack()
