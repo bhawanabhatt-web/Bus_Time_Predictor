@@ -219,7 +219,6 @@ def preprocess_data(df):
 
 # 3. FEATURE PREPARATION
 def prepare_features_for_ml(df_processed):
-    """Prepare features and target variable."""
     print("\n" + "=" * 70)
     print("STEP 4: PREPARING FEATURES FOR MACHINE LEARNING")
     print("=" * 70)
@@ -253,7 +252,6 @@ def prepare_features_for_ml(df_processed):
 # 4. MODEL TRAINING & COMPARATIVE ANALYSIS
 
 def compute_regression_metrics(y_true, y_pred, label=""):
-    """Compute and display all regression metrics."""
     mae   = mean_absolute_error(y_true, y_pred)
     mse   = mean_squared_error(y_true, y_pred)
     rmse  = np.sqrt(mse)
@@ -279,13 +277,6 @@ def compute_regression_metrics(y_true, y_pred, label=""):
     }
 
 def train_and_compare_models(X, y, test_size=0.2, random_state=42):
-    """
-    Train Multiple Linear Regression (primary) and compare with:
-    - Ridge Regression
-    - Decision Tree Regressor
-    - Random Forest Regressor
-    Includes cross-validation and feature importance analysis.
-    """
     print("\n" + "=" * 70)
     print("STEP 5: MODEL TRAINING, EVALUATION & COMPARATIVE ANALYSIS")
     print("=" * 70)
@@ -395,3 +386,185 @@ def train_and_compare_models(X, y, test_size=0.2, random_state=42):
 
     return results
 
+# 5. PREDICTION FUNCTION
+
+def predict_arrival_time(results, features, user_location_stop, destination_stop,
+                          df_raw, feature_columns):
+    """Predict bus arrival time using the primary model."""
+    print("\n" + "=" * 70)
+    print("STEP 6: MAKING PREDICTION FOR USER QUERY")
+    print("=" * 70)
+    print(f"\n📍 Journey: {user_location_stop} → {destination_stop}")
+
+    model_data = results["Multiple Linear Regression"]
+    feature_vector = pd.DataFrame([features], columns=feature_columns)
+    feature_vector = feature_vector.fillna(feature_vector.median())
+    feature_vector_scaled = model_data['scaler'].transform(feature_vector)
+    predicted_time = model_data['model'].predict(feature_vector_scaled)[0]
+
+    minutes = int(predicted_time)
+    seconds = int((predicted_time - minutes) * 60)
+    print(f"\n🔮 Estimated Travel Time: {minutes} min {seconds} sec")
+
+    return {
+        'predicted_time_minutes': predicted_time,
+        'from_stop': user_location_stop,
+        'to_stop': destination_stop
+    }
+
+# 6. VISUALIZATION
+# ====================================================
+
+def plot_all_visualizations(results, df_original):
+    """Generate all evaluation and data visualizations."""
+    print("\n📊 Generating visualizations...")
+
+    primary = results["Multiple Linear Regression"]
+
+    # ── Fig 1: Model Evaluation (MLR) ──
+    fig1, axes = plt.subplots(2, 2, figsize=(15, 12))
+    fig1.suptitle("Multiple Linear Regression — Model Evaluation", fontsize=16, fontweight='bold')
+
+    # Actual vs Predicted
+    axes[0, 0].scatter(primary['y_test'], primary['y_test_pred'], alpha=0.3, s=5)
+    lims = [primary['y_test'].min(), primary['y_test'].max()]
+    axes[0, 0].plot(lims, lims, 'r--', lw=2)
+    axes[0, 0].set_xlabel('Actual Travel Time (min)')
+    axes[0, 0].set_ylabel('Predicted Travel Time (min)')
+    axes[0, 0].set_title(f'Actual vs Predicted\nR² = {primary["test_metrics"]["r2"]:.4f}')
+    axes[0, 0].grid(True, alpha=0.3)
+
+    # Residuals
+    residuals = primary['y_test'].values - primary['y_test_pred']
+    axes[0, 1].scatter(primary['y_test_pred'], residuals, alpha=0.3, s=5)
+    axes[0, 1].axhline(0, color='r', linestyle='--', lw=2)
+    axes[0, 1].set_xlabel('Predicted Travel Time (min)')
+    axes[0, 1].set_ylabel('Residuals (min)')
+    axes[0, 1].set_title('Residual Plot')
+    axes[0, 1].grid(True, alpha=0.3)
+
+    # Feature Importance
+    top_f = results['feature_importance'].head(10)
+    axes[1, 0].barh(range(len(top_f)), top_f['abs_coefficient'], color='steelblue')
+    axes[1, 0].set_yticks(range(len(top_f)))
+    axes[1, 0].set_yticklabels(top_f['feature'], fontsize=9)
+    axes[1, 0].set_xlabel('|Coefficient|')
+    axes[1, 0].set_title('Top 10 Feature Importances')
+    axes[1, 0].grid(True, alpha=0.3, axis='x')
+
+    # Error Distribution
+    axes[1, 1].hist(residuals, bins=60, edgecolor='black', alpha=0.7, color='coral')
+    axes[1, 1].axvline(0, color='r', linestyle='--', lw=2)
+    axes[1, 1].set_xlabel('Prediction Error (min)')
+    axes[1, 1].set_ylabel('Frequency')
+    axes[1, 1].set_title(f'Error Distribution\nMAE = {primary["test_metrics"]["mae"]:.3f} min')
+    axes[1, 1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig('model_evaluation.png', dpi=150, bbox_inches='tight')
+    print("   ✓ Saved: model_evaluation.png")
+    plt.close(fig1)
+
+    # ── Fig 2: Comparative Bar Chart ──
+    model_names = [n for n in results.keys()
+                   if n not in ('feature_importance', 'best_model_name', 'primary_model_name')]
+    mae_vals  = [results[n]['test_metrics']['mae']  for n in model_names]
+    rmse_vals = [results[n]['test_metrics']['rmse'] for n in model_names]
+    r2_vals   = [results[n]['test_metrics']['r2']   for n in model_names]
+
+    fig2, axes2 = plt.subplots(1, 3, figsize=(16, 5))
+    fig2.suptitle("Comparative Model Performance", fontsize=14, fontweight='bold')
+
+    short_names = [n.replace(" Regressor", "").replace(" Regression", "") for n in model_names]
+    colors = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0']
+
+    for ax, vals, title, ylabel in zip(
+        axes2,
+        [mae_vals, rmse_vals, r2_vals],
+        ['MAE (lower is better)', 'RMSE (lower is better)', 'R² Score (higher is better)'],
+        ['Minutes', 'Minutes', 'R² Score']
+    ):
+        bars = ax.bar(short_names, vals, color=colors[:len(model_names)])
+        ax.set_title(title)
+        ax.set_ylabel(ylabel)
+        ax.set_xticklabels(short_names, rotation=15, ha='right', fontsize=9)
+        ax.grid(True, alpha=0.3, axis='y')
+        for bar, val in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{val:.3f}', ha='center', va='bottom', fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig('model_comparison.png', dpi=150, bbox_inches='tight')
+    print("   ✓ Saved: model_comparison.png")
+    plt.close(fig2)
+
+    # ── Fig 3: Data Distribution ──
+    fig3, axes3 = plt.subplots(2, 3, figsize=(16, 10))
+    fig3.suptitle("Bus Dataset — Data Distributions", fontsize=14, fontweight='bold')
+
+    df_orig = df_original.copy()
+    df_orig['date'] = pd.to_datetime(df_orig['date'], errors='coerce')
+    df_orig['arrival_datetime'] = pd.to_datetime(
+        df_orig['date'].astype(str) + ' ' + df_orig['arrival_time'], errors='coerce')
+    df_orig['arrival_hour'] = df_orig['arrival_datetime'].dt.hour
+
+    axes3[0, 0].hist(df_orig['dwell_time_in_seconds'].clip(0, 300), bins=50,
+                     color='steelblue', edgecolor='black', alpha=0.8)
+    axes3[0, 0].set_title('Dwell Time Distribution (seconds)')
+    axes3[0, 0].set_xlabel('Dwell Time (s)')
+    axes3[0, 0].set_ylabel('Frequency')
+    axes3[0, 0].grid(True, alpha=0.3)
+
+    hour_counts = df_orig['arrival_hour'].value_counts().sort_index()
+    axes3[0, 1].bar(hour_counts.index, hour_counts.values, color='coral')
+    axes3[0, 1].set_title('Bus Arrivals by Hour of Day')
+    axes3[0, 1].set_xlabel('Hour')
+    axes3[0, 1].set_ylabel('Count')
+    axes3[0, 1].grid(True, alpha=0.3, axis='y')
+
+    stop_counts = df_orig['bus_stop'].value_counts().head(15)
+    axes3[0, 2].bar(stop_counts.index.astype(str), stop_counts.values, color='green', alpha=0.8)
+    axes3[0, 2].set_title('Top 15 Bus Stops by Record Count')
+    axes3[0, 2].set_xlabel('Stop ID')
+    axes3[0, 2].set_ylabel('Count')
+    axes3[0, 2].tick_params(axis='x', rotation=45)
+    axes3[0, 2].grid(True, alpha=0.3, axis='y')
+
+    direction_counts = df_orig['direction'].value_counts()
+    axes3[1, 0].pie(direction_counts.values, labels=[f'Direction {d}' for d in direction_counts.index],
+                    autopct='%1.1f%%', colors=['#2196F3', '#FF9800'])
+    axes3[1, 0].set_title('Direction Distribution')
+
+    day_counts = df_orig['arrival_datetime'].dt.dayofweek.value_counts().sort_index()
+    day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    axes3[1, 1].bar([day_labels[i] for i in day_counts.index], day_counts.values, color='purple', alpha=0.8)
+    axes3[1, 1].set_title('Arrivals by Day of Week')
+    axes3[1, 1].set_xlabel('Day')
+    axes3[1, 1].set_ylabel('Count')
+    axes3[1, 1].grid(True, alpha=0.3, axis='y')
+
+    axes3[1, 2].hist(df_orig['dwell_time_in_seconds'].clip(0, 300), bins=50,
+                     cumulative=True, density=True, histtype='step', color='red', linewidth=2)
+    axes3[1, 2].set_title('Cumulative Distribution of Dwell Time')
+    axes3[1, 2].set_xlabel('Dwell Time (s)')
+    axes3[1, 2].set_ylabel('Cumulative Probability')
+    axes3[1, 2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig('data_distribution.png', dpi=150, bbox_inches='tight')
+    print("   ✓ Saved: data_distribution.png")
+    plt.close(fig3)
+
+    # ── Fig 4: Correlation Heatmap ──
+    fig4, ax4 = plt.subplots(figsize=(10, 8))
+    numeric_df = df_original.select_dtypes(include=[np.number])
+    corr = numeric_df.corr()
+    sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm',
+                center=0, ax=ax4, cbar_kws={'shrink': 0.8})
+    ax4.set_title('Feature Correlation Heatmap', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig('correlation_heatmap.png', dpi=150, bbox_inches='tight')
+    print("   ✓ Saved: correlation_heatmap.png")
+    plt.close(fig4)
+
+    print("   ✓ All visualizations saved successfully.")
