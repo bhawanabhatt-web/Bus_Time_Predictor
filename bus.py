@@ -637,6 +637,29 @@ def plot_all_visualizations(results, df_original):
 
     print("   All visualisations saved successfully.")
 
+# 7. UI LAUNCHER
+
+def launch_bus_tracker_ui():
+    """Launch the Bus Tracker UI application."""
+    print("\n" + "=" * 70)
+    print("🚀 LAUNCHING BUS TRACKER UI")
+    print("=" * 70)
+    ui_candidates = ['bus_time_tracker_UI.py']
+    ui_file = None
+    for f in ui_candidates:
+        if os.path.exists(f):
+            ui_file = f
+            break
+    if ui_file:
+        print(f"\n✓ Found UI file: {ui_file}")
+        try:
+            subprocess.run([sys.executable, ui_file])
+        except Exception as e:
+            print(f"❌ Error launching UI: {e}")
+    else:
+        print("⚠ UI file not found. Please run 'Bus_trackerUI.py' manually.")
+
+
 
 # 8. MAIN PIPELINE
 
@@ -667,9 +690,7 @@ def main():
     plot_all_visualizations(results, df)
 
     # Example prediction
-    print("\n" + "=" * 70)
     print("EXAMPLE PREDICTION")
-    print("=" * 70)
     sample = df_processed.iloc[100]
     sample_features = {c: sample[c]
                        for c in (ohe_cols + num_cols)
@@ -684,9 +705,6 @@ def main():
         num_cols=num_cols,
     )
 
-    print("\n" + "=" * 70)
-    print("SAVING PRIMARY MODEL")
-    print("=" * 70)
     primary_pipeline = results["Multiple Linear Regression"]["pipeline"]
     model_path = 'bus_arrival_mlr_model.pkl'
     joblib.dump({
@@ -712,6 +730,8 @@ def main():
     print(f"   MAPE : {tm['mape']:.2f} %")
     print(f"\n   Best overall model : {results['best_model_name']}")
 
+    # Launch UI
+    launch_bus_tracker_ui()
 
 if __name__ == "__main__":
     main()
