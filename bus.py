@@ -568,3 +568,78 @@ def plot_all_visualizations(results, df_original):
     plt.close(fig4)
 
     print("   ✓ All visualizations saved successfully.")
+
+
+# 8. MAIN PIPELINE
+
+def main():
+    print("\n" + "=" * 70)
+    print("🚌  BUS ARRIVAL TIME PREDICTION SYSTEM")
+    print("    Multiple Linear Regression | Comparative Analysis")
+    print("=" * 70)
+
+    # Load
+    df = load_bus_data('bus_data.csv')
+    if df is None:
+        return
+
+    # Explore
+    explore_data(df)
+
+    # Preprocess
+    df_processed, label_encoders, minmax_scaler = preprocess_data(df)
+
+    # Prepare Features
+    feature_columns, X, y = prepare_features_for_ml(df_processed)
+
+    # Train + Compare
+    results = train_and_compare_models(X, y)
+
+    # Visualize
+    plot_all_visualizations(results, df)
+
+    # Example Prediction
+    print("\n" + "=" * 70)
+    print("EXAMPLE PREDICTION")
+    print("=" * 70)
+    sample = df_processed.iloc[100]
+    example_features = {col: sample[col] for col in feature_columns if col in df_processed.columns}
+    prediction = predict_arrival_time(
+        results=results,
+        features=example_features,
+        user_location_stop=str(int(sample.get('bus_stop_encoded', 0))),
+        destination_stop='Next Stop',
+        df_raw=df,
+        feature_columns=feature_columns
+    )
+
+    # Save primary model
+    print("\n" + "=" * 70)
+    print("SAVING PRIMARY MODEL")
+    print("=" * 70)
+    primary = results["Multiple Linear Regression"]
+    model_path = 'bus_arrival_mlr_model.pkl'
+    joblib.dump({
+        'model': primary['model'],
+        'scaler': primary['scaler'],
+        'feature_columns': feature_columns,
+        'label_encoders': label_encoders,
+        'performance': primary['test_metrics']
+    }, model_path)
+    print(f"✓ Model saved to: {model_path}")
+
+    # Final Summary
+    tm = primary['test_metrics']
+    print("\n" + "=" * 70)
+    print("✅ FINAL MODEL PERFORMANCE — Multiple Linear Regression")
+    print("=" * 70)
+    print(f"   MAE  : {tm['mae']:.4f} minutes")
+    print(f"   RMSE : {tm['rmse']:.4f} minutes")
+    print(f"   R²   : {tm['r2']:.4f}")
+    print(f"   MAPE : {tm['mape']:.2f}%")
+    print(f"   Accuracy within ±2 min: {tm['within_threshold']:.2f}%")
+    print(f"\n   Best overall model: {results['best_model_name']}")
+
+    
+if __name__ == "__main__":
+    main()
