@@ -277,3 +277,121 @@ def compute_regression_metrics(y_true, y_pred, label=""):
         'mae': mae, 'mse': mse, 'rmse': rmse,
         'r2': r2, 'mape': mape, 'within_threshold': within_thresh
     }
+
+def train_and_compare_models(X, y, test_size=0.2, random_state=42):
+    """
+    Train Multiple Linear Regression (primary) and compare with:
+    - Ridge Regression
+    - Decision Tree Regressor
+    - Random Forest Regressor
+    Includes cross-validation and feature importance analysis.
+    """
+    print("\n" + "=" * 70)
+    print("STEP 5: MODEL TRAINING, EVALUATION & COMPARATIVE ANALYSIS")
+    print("=" * 70)
+
+    # ── Train-Test Split ──
+    print("\n🔧 5.1: Train-Test Split (80% train / 20% test)")
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, shuffle=True
+    )
+    print(f"   Training: {len(X_train):,} | Testing: {len(X_test):,}")
+
+    # ── Feature Scaling (StandardScaler) ──
+    print("\n🔧 5.2: Feature Scaling (StandardScaler: mean=0, std=1)")
+    print("   Formula: z = (x - μ) / σ")
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled  = scaler.transform(X_test)
+    print("   ✓ Features standardized")
+
+    # ── Define Models ──
+    models = {
+        "Multiple Linear Regression": LinearRegression(),
+        "Ridge Regression (α=1.0)": Ridge(alpha=1.0),
+        "Decision Tree Regressor": DecisionTreeRegressor(
+            max_depth=8, min_samples_split=20, random_state=random_state),
+        "Random Forest Regressor": RandomForestRegressor(
+            n_estimators=100, max_depth=8, min_samples_split=20,
+            n_jobs=-1, random_state=random_state),
+    }
+
+    print("\n🔧 5.3: Training and Evaluating All Models")
+    results = {}
+
+    for model_name, model in models.items():
+        print(f"\n{'─'*55}")
+        print(f"  MODEL: {model_name}")
+        print(f"{'─'*55}")
+
+        # Train
+        model.fit(X_train_scaled, y_train)
+
+        # Predict
+        y_train_pred = model.predict(X_train_scaled)
+        y_test_pred  = model.predict(X_test_scaled)
+
+        # Metrics
+        train_metrics = compute_regression_metrics(y_train, y_train_pred, "Train Set")
+        test_metrics  = compute_regression_metrics(y_test,  y_test_pred,  "Test Set")
+
+        # Cross-Validation (5-Fold, MAE)
+        cv = KFold(n_splits=5, shuffle=True, random_state=random_state)
+        cv_scores = cross_val_score(model, X_train_scaled, y_train,
+                                     cv=cv, scoring='neg_mean_absolute_error')
+        cv_mae = -cv_scores
+        print(f"\n   📊 5-Fold Cross-Validation MAE:")
+        print(f"      Mean: {cv_mae.mean():.4f} | Std: {cv_mae.std():.4f}")
+        print(f"      Scores: {np.round(cv_mae, 3)}")
+
+        results[model_name] = {
+            'model': model,
+            'scaler': scaler,
+            'X_train': X_train, 'X_test': X_test,
+            'y_train': y_train, 'y_test': y_test,
+            'y_train_pred': y_train_pred, 'y_test_pred': y_test_pred,
+            'train_metrics': train_metrics,
+            'test_metrics': test_metrics,
+            'cv_mae_mean': cv_mae.mean(),
+            'cv_mae_std': cv_mae.std(),
+        }
+
+    # ── Comparative Summary ──
+    print("\n" + "=" * 70)
+    print("📊 COMPARATIVE MODEL PERFORMANCE SUMMARY (Test Set)")
+    print("=" * 70)
+    header = f"{'Model':<35} {'MAE':>8} {'RMSE':>8} {'R²':>8} {'Acc±2min':>10} {'CV-MAE':>10}"
+    print(header)
+    print("-" * 80)
+    best_model_name = None
+    best_r2 = -np.inf
+    for name, res in results.items():
+        tm = res['test_metrics']
+        row = (f"{name:<35} {tm['mae']:>8.4f} {tm['rmse']:>8.4f} "
+               f"{tm['r2']:>8.4f} {tm['within_threshold']:>9.2f}% "
+               f"{res['cv_mae_mean']:>10.4f}")
+        print(row)
+        if tm['r2'] > best_r2:
+            best_r2 = tm['r2']
+            best_model_name = name
+
+    print(f"\n🏆 Best Model (highest R²): {best_model_name} (R² = {best_r2:.4f})")
+
+    # ── Feature Importance for Linear Regression ──
+    lr_model = results["Multiple Linear Regression"]['model']
+    feature_importance = pd.DataFrame({
+        'feature': X.columns,
+        'coefficient': lr_model.coef_,
+        'abs_coefficient': np.abs(lr_model.coef_)
+    }).sort_values('abs_coefficient', ascending=False)
+
+    print("\n📊 Top 10 Feature Importances (MLR — by absolute coefficient):")
+    for _, row in feature_importance.head(10).iterrows():
+        print(f"   {row['feature']:35s}: {row['coefficient']:+.4f}")
+
+    results['feature_importance'] = feature_importance
+    results['best_model_name'] = best_model_name
+    results['primary_model_name'] = "Multiple Linear Regression"
+
+    return results
+
