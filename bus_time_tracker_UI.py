@@ -202,7 +202,7 @@ class BusTrackerApp(ctk.CTk):
 
         pulse()
 
-    # ── Search Section ───────────────────────────
+    #  Search Section 
     def create_search_section(self, parent):
         search_frame = ctk.CTkFrame(parent, fg_color=self.colors['dark'],
                                      corner_radius=15,
@@ -304,3 +304,295 @@ class BusTrackerApp(ctk.CTk):
             ctk.CTkLabel(col, text=lbl,
                          font=ctk.CTkFont(size=9),
                          text_color=self.colors['subtext']).pack()
+            
+    #  Results Section 
+
+    def create_results_section(self, parent):
+        results_frame = ctk.CTkFrame(parent, fg_color=self.colors['dark'],
+                                      corner_radius=15,
+                                      border_width=1,
+                                      border_color="#2D4A7A")
+        results_frame.pack(fill="both", expand=True)
+
+        hdr = ctk.CTkFrame(results_frame, fg_color="transparent", height=42)
+        hdr.pack(fill="x", padx=20, pady=(10, 0))
+        hdr.pack_propagate(False)
+
+        ctk.CTkLabel(hdr, text="📊  Available Buses",
+                     font=ctk.CTkFont(size=20, weight="bold"),
+                     text_color=self.colors['accent']).pack(side="left", anchor="center")
+
+        self._result_count_lbl = ctk.CTkLabel(
+            hdr, text="",
+            font=ctk.CTkFont(size=12),
+            text_color=self.colors['subtext'])
+        self._result_count_lbl.pack(side="right", anchor="center")
+
+        ctk.CTkFrame(results_frame, fg_color="#2D4A7A", height=1).pack(fill="x", padx=20)
+
+        self.results_scroll = ctk.CTkScrollableFrame(
+            results_frame,
+            fg_color="transparent",
+            scrollbar_button_color=self.colors['secondary'],
+            scrollbar_button_hover_color=self.colors['accent'])
+        self.results_scroll.pack(fill="both", expand=True, padx=20, pady=(10, 16))
+
+        self.show_empty_state()
+
+    #  Footer 
+    def create_footer(self, parent):
+        footer = ctk.CTkFrame(parent, fg_color="transparent", height=26)
+        footer.pack(fill="x", pady=(6, 0))
+        footer.pack_propagate(False)
+
+        ctk.CTkLabel(
+            footer,
+            text="💡  Real-time bus tracking powered by AI  |  © 2026 Smart Bus Tracker",
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors['subtext']).pack(expand=True)
+
+    # State helpers
+    def show_empty_state(self):
+        f = ctk.CTkFrame(self.results_scroll, fg_color="transparent")
+        f.pack(expand=True, fill="both", pady=40)
+        ctk.CTkLabel(f, text="🔍", font=ctk.CTkFont(size=58)).pack()
+        ctk.CTkLabel(f, text="Search for buses to see available options",
+                     font=ctk.CTkFont(size=14),
+                     text_color=self.colors['text']).pack(pady=(8, 0))
+        ctk.CTkLabel(f, text="Select a pickup and destination stop above",
+                     font=ctk.CTkFont(size=12),
+                     text_color=self.colors['subtext']).pack(pady=(4, 0))
+
+    def clear_results(self):
+        for w in self.results_scroll.winfo_children():
+            w.destroy()
+
+
+    # Search logic
+
+    def search_buses(self):
+        pickup = self.pickup_combo.get()
+        dest   = self.destination_combo.get()
+
+        if pickup == "Select pickup location" or dest == "Select destination":
+            messagebox.showwarning("Missing Information",
+                                   "Please select both pickup and destination stops!")
+            return
+        if pickup == dest:
+            messagebox.showwarning("Invalid Selection",
+                                   "Pickup and destination cannot be the same!")
+            return
+
+        self.show_loading()
+        threading.Thread(target=self.perform_search,
+                         args=(pickup, dest), daemon=True).start()
+
+    def show_loading(self):
+        self.clear_results()
+        self.animation_running = True
+        self._result_count_lbl.configure(text="Searching…")
+
+        f = ctk.CTkFrame(self.results_scroll, fg_color="transparent")
+        f.pack(expand=True, fill="both", pady=40)
+
+        self.loading_label = ctk.CTkLabel(
+            f, text="🚌  Searching for buses",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors['accent'])
+        self.loading_label.pack(pady=(0, 16))
+
+        self._prog_bar = ctk.CTkProgressBar(f, width=340, mode="indeterminate",
+                                             fg_color=self.colors['darker'],
+                                             progress_color=self.colors['secondary'],
+                                             corner_radius=6)
+        self._prog_bar.pack()
+        self._prog_bar.start()
+
+        self.animate_loading()
+
+    def animate_loading(self):
+        if self.animation_running:
+            self.loading_dots = (self.loading_dots + 1) % 4
+            dots = "." * self.loading_dots
+            try:
+                self.loading_label.configure(text=f"🚌  Searching for buses{dots}")
+            except Exception:
+                pass
+            self.after(300, self.animate_loading)
+
+    def perform_search(self, pickup, destination):
+        time.sleep(1.5)
+        buses_data = self.get_available_buses(pickup, destination)
+        self.after(0, lambda: self.display_results(buses_data, pickup, destination))
+
+    def get_available_buses(self, pickup, destination):
+        try:
+            if self.df_processed is not None:
+                avail = self.df_processed[
+                    self.df_processed['bus_stop'].astype(str) == str(pickup)]
+                buses = []
+                for bus_id in avail['deviceid'].unique()[:10]:
+                    bd = avail[avail['deviceid'] == bus_id]
+                    avg = bd['travel_time_to_next_stop'].mean() \
+                        if 'travel_time_to_next_stop' in bd.columns \
+                        else np.random.uniform(5, 20)
+                    arrival = datetime.now() + timedelta(minutes=np.random.uniform(2, 15))
+                    buses.append({
+                        'bus_id':       str(bus_id),
+                        'arrival_time': arrival,
+                        'travel_time':  avg,
+                        'occupancy':    np.random.choice(['Low', 'Medium', 'High']),
+                        'status':       'On Time',
+                    })
+                buses.sort(key=lambda x: x['arrival_time'])
+                return buses
+        except Exception as e:
+            print(f"Search error: {e}")
+        return self.generate_sample_buses()
+
+    def generate_sample_buses(self):
+        now = datetime.now()
+        buses = []
+        for _ in range(8):
+            m = np.random.randint(2, 30)
+            buses.append({
+                'bus_id':       f"Bus-{np.random.randint(1, 100):03d}",
+                'arrival_time': now + timedelta(minutes=m),
+                'travel_time':  np.random.uniform(10, 25),
+                'occupancy':    np.random.choice(['Low', 'Medium', 'High']),
+                'status':       np.random.choice(['On Time', 'Delayed', 'Early']),
+            })
+        buses.sort(key=lambda x: x['arrival_time'])
+        return buses
+    
+    # Results display
+    def display_results(self, buses_data, pickup, destination):
+        self.animation_running = False
+        self.clear_results()
+
+        if not buses_data:
+            self._result_count_lbl.configure(text="No buses found")
+            self.show_no_results()
+            return
+
+        n = len(buses_data)
+        self._result_count_lbl.configure(text=f"{n} bus{'es' if n != 1 else ''} found")
+
+        route_frame = ctk.CTkFrame(self.results_scroll,
+                                    fg_color=self.colors['primary'],
+                                    corner_radius=12)
+        route_frame.pack(fill="x", padx=6, pady=(0, 14))
+
+        ctk.CTkLabel(route_frame,
+                     text=f"🚏  {pickup}   →   🎯  {destination}",
+                     font=ctk.CTkFont(size=15, weight="bold"),
+                     text_color=self.colors['light']).pack(pady=13)
+
+        for idx, bus in enumerate(buses_data):
+            self.create_bus_card(bus, idx)
+
+    def create_bus_card(self, bus_data, index):
+        is_best = index == 0
+
+        card_bg = self.colors['secondary'] if is_best else "#243044"
+        border  = self.colors['accent']    if is_best else "#2D4A7A"
+
+        card = ctk.CTkFrame(self.results_scroll,
+                             fg_color=card_bg,
+                             corner_radius=13,
+                             border_width=2,
+                             border_color=border)
+        card.pack(fill="x", padx=6, pady=6)
+
+
+
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(fill="both", padx=20, pady=14)
+
+        # Row 1: Bus ID + Status
+        top_row = ctk.CTkFrame(content, fg_color="transparent")
+        top_row.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(top_row,
+                     text=f"🚌  {bus_data['bus_id']}",
+                     font=ctk.CTkFont(size=18, weight="bold"),
+                     text_color=self.colors['light']).pack(side="left")
+
+
+
+        # Row 2: Arrival + countdown chip
+        arrival_str = bus_data['arrival_time'].strftime("%I:%M %p")
+        mins_away   = max(0, int((bus_data['arrival_time'] - datetime.now()
+                                  ).total_seconds() / 60))
+
+        arr_row = ctk.CTkFrame(content, fg_color="transparent")
+        arr_row.pack(fill="x", pady=(0, 6))
+
+        ctk.CTkLabel(arr_row,
+                     text=f"⏰  Arrives at {arrival_str}",
+                     font=ctk.CTkFont(size=14),
+                     text_color=self.colors['light']).pack(side="left")
+
+        chip = ctk.CTkFrame(arr_row, fg_color=self.colors['darker'],
+                             corner_radius=8)
+        chip.pack(side="left", padx=10)
+        ctk.CTkLabel(chip, text=f"  {mins_away} min away  ",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=self.colors['accent']).pack(pady=3)
+
+        # Row 3: Travel time
+        ctk.CTkLabel(content,
+                     text=f"⏱️  Travel time: {bus_data['travel_time']:.1f} minutes",
+                     font=ctk.CTkFont(size=13),
+                     text_color=self.colors['text']).pack(anchor="w", pady=(0, 6))
+
+        # Row 4: Occupancy + mini progress bar
+        occ_row = ctk.CTkFrame(content, fg_color="transparent")
+        occ_row.pack(anchor="w", fill="x")
+
+        occ_colors = {
+            'Low':    self.colors['success'],
+            'Medium': self.colors['warning'],
+            'High':   self.colors['danger'],
+        }
+        occ_vals = {'Low': 0.25, 'Medium': 0.6, 'High': 1.0}
+        o_col = occ_colors.get(bus_data['occupancy'], self.colors['text'])
+
+        ctk.CTkLabel(occ_row, text="👥  Occupancy: ",
+                     font=ctk.CTkFont(size=13),
+                     text_color=self.colors['text']).pack(side="left")
+
+        ctk.CTkLabel(occ_row,
+                     text=bus_data['occupancy'],
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=o_col).pack(side="left")
+
+        occ_bar = ctk.CTkProgressBar(occ_row, width=100, height=8,
+                                      fg_color=self.colors['darker'],
+                                      progress_color=o_col,
+                                      corner_radius=4)
+        occ_bar.pack(side="left", padx=12)
+        occ_bar.set(occ_vals.get(bus_data['occupancy'], 0.5))
+
+        # Staggered entrance
+        self.after(index * 80, lambda c=card: c.pack_configure(pady=6))
+
+    def show_no_results(self):
+        f = ctk.CTkFrame(self.results_scroll, fg_color="transparent")
+        f.pack(expand=True, fill="both", pady=50)
+        ctk.CTkLabel(f, text="😔", font=ctk.CTkFont(size=58)).pack()
+        ctk.CTkLabel(f, text="No buses found for this route",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=self.colors['text']).pack(pady=(8, 4))
+        ctk.CTkLabel(f, text="Try selecting different bus stops",
+                     font=ctk.CTkFont(size=13),
+                     text_color=self.colors['accent']).pack()
+
+
+def main():
+    app = BusTrackerApp()
+    app.mainloop()
+
+
+if __name__ == "__main__":
+    main()       
