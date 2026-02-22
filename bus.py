@@ -114,8 +114,7 @@ def preprocess_data(df):
     df_processed.reset_index(drop=True, inplace=True)
     print(f"   Valid datetime rows: {len(df_processed):,}")
 
-    # 3.4 Time-based features
-    print("\n 3.4: Extracting Time-Based Features")
+    # Time-based features
     h = df_processed['arrival_datetime'].dt.hour
     df_processed['arrival_hour']   = h
     df_processed['arrival_minute'] = df_processed['arrival_datetime'].dt.minute
@@ -157,6 +156,7 @@ def preprocess_data(df):
         df_processed.groupby('trip_id')['arrival_datetime']
         .shift(-1) - df_processed['arrival_datetime']
     ).dt.total_seconds() / 60
+    
     print("   actual_dwell_time (s), travel_time_to_next_stop (min)")
 
     # 3.7 Lag features
@@ -195,6 +195,20 @@ def preprocess_data(df):
     print(f"\n Preprocessing Complete! Final shape: {df_processed.shape}")
     label_encoders = {}  
     return df_processed, label_encoders
+
+def save_cleaned_dataset(df_processed, path='bus_data_cleaned.csv'):
+    """Save the cleaned and feature-engineered dataset to CSV after preprocessing."""
+    print("\n" + "=" * 70)
+    print("SAVING CLEANED DATASET")
+    print("=" * 70)
+
+    df_to_save = df_processed.copy()
+    df_to_save.to_csv(path, index=False)
+
+    print(f"  ✓ Cleaned dataset saved → '{path}'")
+    print(f"  ✓ Shape   : {df_to_save.shape[0]:,} rows × {df_to_save.shape[1]} columns")
+    print(f"  ✓ Columns : {list(df_to_save.columns)}")
+    print(f"  ✓ Missing : {df_to_save.isnull().sum().sum()} values remaining")
 
 # 3. MULTICOLLINEARITY REMOVAL  
 
@@ -679,6 +693,9 @@ def main():
 
     # Preprocess
     df_processed, label_encoders = preprocess_data(df)
+
+    # Save cleaned dataset
+    save_cleaned_dataset(df_processed)
 
     # Feature preparation (includes multicollinearity removal)
     ohe_cols, num_cols, poly_cols, X, y_raw, y_log = prepare_features_for_ml(df_processed)
