@@ -5,9 +5,7 @@ import os
 import sys
 import subprocess
 import joblib
-
 warnings.filterwarnings('ignore')
-
 from datetime import datetime
 
 # sklearn – preprocessing
@@ -19,11 +17,11 @@ from sklearn.pipeline  import Pipeline
 
 # sklearn – model selection
 from sklearn.model_selection import (
-    train_test_split, cross_val_score, KFold, GridSearchCV
+    train_test_split, cross_val_score, KFold
 )
 
-# sklearn – linear models only
-from sklearn.linear_model import LinearRegression, Ridge, Lasso
+# sklearn – linear model
+from sklearn.linear_model import LinearRegression
 
 # sklearn – metrics
 from sklearn.metrics import (
@@ -31,7 +29,6 @@ from sklearn.metrics import (
     mean_absolute_percentage_error
 )
 
-# VIF
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 import matplotlib
 matplotlib.use('Agg')
@@ -253,7 +250,7 @@ def remove_multicollinearity(X_num, threshold_corr=0.85, threshold_vif=10.0):
     print(f"   Final numeric features after multicollinearity removal: {len(cols)}")
     return cols
 
-# 3. FEATURE PREPARATION
+# 4. FEATURE PREPARATION
 def prepare_features_for_ml(df_processed):
     print("\n" + "=" * 70)
     print("STEP 4: PREPARING FEATURES FOR MACHINE LEARNING")
@@ -301,7 +298,7 @@ def prepare_features_for_ml(df_processed):
     return ohe_cols, num_cols, poly_cols, X, y_raw, y_log
 
 
-# 4. MODEL TRAINING & COMPARATIVE ANALYSIS
+# 5. MODEL TRAINING
 
 def compute_regression_metrics(y_true, y_pred, label=""):
     mae  = mean_absolute_error(y_true, y_pred)
@@ -343,23 +340,12 @@ def build_pipeline(ohe_cols, num_cols, poly_cols, estimator):
     return Pipeline([('preprocessor', ct), ('model', estimator)])
 
 
-def train_and_compare_models(ohe_cols, num_cols, poly_cols,
-                              X, y_raw, y_log,
-                              test_size=0.2, random_state=42):
-    """
-    Train LinearRegression, Ridge (GridSearchCV-tuned), Lasso (GridSearchCV-tuned).
+def train_model(ohe_cols, num_cols, poly_cols,
+                X, y_raw, y_log,
+                test_size=0.2, random_state=42):
 
-    All models trained on log1p(y); metrics reported on original scale via expm1.
-
-    GridSearchCV
-    ------------
-    Ridge alpha : [0.01, 0.1, 1, 10, 100]
-    Lasso alpha : [0.001, 0.01, 0.1, 1]
-    Scoring     : neg_mean_squared_error (in log-space)
-    CV splits   : 5-fold KFold
-    """
     print("\n" + "=" * 70)
-    print("STEP 5: MODEL TRAINING, EVALUATION & COMPARATIVE ANALYSIS")
+    print("STEP 5: MODEL TRAINING & EVALUATION")
     print("=" * 70)
 
     print("\n 5.1: Train-Test Split (80 / 20)")
@@ -370,60 +356,29 @@ def train_and_compare_models(ohe_cols, num_cols, poly_cols,
 
     cv = KFold(n_splits=5, shuffle=True, random_state=random_state)
 
-    model_configs = {
+    print(f"\n{'─'*60}")
+    print(f"  MODEL: Multiple Linear Regression")
+    print(f"{'─'*60}")
+
+    pipe = build_pipeline(ohe_cols, num_cols, poly_cols, LinearRegression())
+    pipe.fit(X_tr, ylog_tr)
+
+    # Back-transform predictions: expm1 reverses log1p
+    y_pred_tr = np.clip(np.expm1(pipe.predict(X_tr)), 0, None)
+    y_pred_te = np.clip(np.expm1(pipe.predict(X_te)), 0, None)
+
+    train_metrics = compute_regression_metrics(yraw_tr, y_pred_tr, "Train Set")
+    test_metrics  = compute_regression_metrics(yraw_te, y_pred_te, "Test  Set")
+
+    # Cross-validation R² on log-space
+    cv_r2 = cross_val_score(pipe, X_tr, ylog_tr,
+                             cv=cv, scoring='r2', n_jobs=-1)
+    print(f"\n   5-Fold CV R²: mean={cv_r2.mean():.4f}  std={cv_r2.std():.4f}")
+
+    results = {
         "Multiple Linear Regression": {
-            "pipeline"  : build_pipeline(ohe_cols, num_cols, poly_cols, LinearRegression()),
-            "param_grid": {}
-        },
-        "Ridge Regression": {
-            "pipeline"  : build_pipeline(ohe_cols, num_cols, poly_cols, Ridge()),
-            "param_grid": {"model__alpha": [0.01, 0.1, 1, 10, 100]}
-        },
-        "Lasso Regression": {
-            "pipeline"  : build_pipeline(ohe_cols, num_cols, poly_cols, Lasso(max_iter=5000)),
-            "param_grid": {"model__alpha": [0.001, 0.01, 0.1, 1]}
-        },
-    }
-
-    results = {}
-    print("\n 5.2: Training & Tuning All Models")
-
-    for name, cfg in model_configs.items():
-        print(f"\n{'─'*60}")
-        print(f"  MODEL: {name}")
-        print(f"{'─'*60}")
-
-        pipe = cfg["pipeline"]
-        grid = cfg["param_grid"]
-
-        if grid:
-            gs = GridSearchCV(pipe, grid, cv=cv,
-                              scoring='neg_mean_squared_error',
-                              n_jobs=-1, refit=True)
-            gs.fit(X_tr, ylog_tr)
-            best_pipe   = gs.best_estimator_
-            best_params = gs.best_params_
-            print(f"   Best hyperparameters: {best_params}")
-        else:
-            pipe.fit(X_tr, ylog_tr)
-            best_pipe   = pipe
-            best_params = {}
-
-        # Back-transform predictions: expm1 reverses log1p
-        y_pred_tr = np.clip(np.expm1(best_pipe.predict(X_tr)), 0, None)
-        y_pred_te = np.clip(np.expm1(best_pipe.predict(X_te)), 0, None)
-
-        train_metrics = compute_regression_metrics(yraw_tr, y_pred_tr, "Train Set")
-        test_metrics  = compute_regression_metrics(yraw_te, y_pred_te, "Test  Set")
-
-        # Cross-validation R² on log-space (faster, same relative ranking)
-        cv_r2 = cross_val_score(best_pipe, X_tr, ylog_tr,
-                                 cv=cv, scoring='r2', n_jobs=-1)
-        print(f"\n   5-Fold CV R²: mean={cv_r2.mean():.4f}  std={cv_r2.std():.4f}")
-
-        results[name] = {
-            'pipeline'    : best_pipe,
-            'best_params' : best_params,
+            'pipeline'    : pipe,
+            'best_params' : {},
             'X_tr': X_tr, 'X_te': X_te,
             'yraw_tr': yraw_tr, 'yraw_te': yraw_te,
             'y_pred_tr': y_pred_tr, 'y_pred_te': y_pred_te,
@@ -432,31 +387,23 @@ def train_and_compare_models(ohe_cols, num_cols, poly_cols,
             'cv_r2_mean'   : cv_r2.mean(),
             'cv_r2_std'    : cv_r2.std(),
         }
+    }
 
-    # Comparative summary table
+    # Model performance summary
     print("\n" + "=" * 70)
-    print("COMPARATIVE MODEL PERFORMANCE -- TEST SET (original scale)")
+    print("MODEL PERFORMANCE -- TEST SET (original scale)")
     print("=" * 70)
-    header = f"{'Model':<35} {'R2':>8} {'MAE':>8} {'RMSE':>8} {'MAPE%':>8} {'CV-R2':>8}"
-    print(header)
-    print("-" * 80)
-
-    best_name, best_r2 = None, -np.inf
-    for name, res in results.items():
-        tm = res['test_metrics']
-        print(f"{name:<35} {tm['r2']:>8.4f} {tm['mae']:>8.4f} "
-              f"{tm['rmse']:>8.4f} {tm['mape']:>7.2f}% "
-              f"{res['cv_r2_mean']:>8.4f}")
-        if tm['r2'] > best_r2:
-            best_r2, best_name = tm['r2'], name
-
-    print(f"\nBest Model (highest R2): {best_name}  (R2 = {best_r2:.4f})")
+    tm = test_metrics
+    print(f"  R²   : {tm['r2']:>10.4f}")
+    print(f"  MAE  : {tm['mae']:>10.4f} min")
+    print(f"  RMSE : {tm['rmse']:>10.4f} min")
+    print(f"  MAPE : {tm['mape']:>10.2f} %")
+    print(f"  CV-R²: {cv_r2.mean():>10.4f} ± {cv_r2.std():.4f}")
 
     # Feature importances from MLR Pipeline
-    mlr_pipe = results["Multiple Linear Regression"]['pipeline']
     try:
-        feat_names = mlr_pipe.named_steps['preprocessor'].get_feature_names_out()
-        coefs = mlr_pipe.named_steps['model'].coef_
+        feat_names = pipe.named_steps['preprocessor'].get_feature_names_out()
+        coefs = pipe.named_steps['model'].coef_
         feat_imp = pd.DataFrame({
             'feature'    : feat_names,
             'coefficient': coefs,
@@ -471,11 +418,11 @@ def train_and_compare_models(ohe_cols, num_cols, poly_cols,
         print(f"   Could not extract feature names: {e}")
         results['feature_importance'] = pd.DataFrame()
 
-    results['best_model_name']    = best_name
+    results['best_model_name']    = "Multiple Linear Regression"
     results['primary_model_name'] = "Multiple Linear Regression"
     return results
 
-# 7. PREDICTION FUNCTION
+# 6. PREDICTION FUNCTION
 
 def predict_arrival_time(results, features, user_location_stop,
                           destination_stop, df_raw, ohe_cols, num_cols):
@@ -506,7 +453,7 @@ def predict_arrival_time(results, features, user_location_stop,
         'to_stop'  : destination_stop,
     }
 
-# 6. VISUALIZATION
+# 7. VISUALIZATION
 def plot_all_visualizations(results, df_original):
     print("\n Generating visualisations...")
 
@@ -554,109 +501,76 @@ def plot_all_visualizations(results, df_original):
     print("   Saved: model_evaluation.png")
     plt.close(fig1)
 
-    # Fig 2: Comparison bar chart
-    model_names = [n for n in results
-                   if n not in ('feature_importance', 'best_model_name',
-                                'primary_model_name')]
-    mae_vals  = [results[n]['test_metrics']['mae']  for n in model_names]
-    rmse_vals = [results[n]['test_metrics']['rmse'] for n in model_names]
-    r2_vals   = [results[n]['test_metrics']['r2']   for n in model_names]
-
-    fig2, axes2 = plt.subplots(1, 3, figsize=(16, 5))
-    fig2.suptitle("Comparative Model Performance", fontsize=14, fontweight='bold')
-    short  = [n.replace(" Regression", "") for n in model_names]
-    colors = ['#2196F3', '#4CAF50', '#FF9800']
-
-    for ax, vals, title, ylabel in zip(
-        axes2,
-        [mae_vals, rmse_vals, r2_vals],
-        ['MAE (lower is better)', 'RMSE (lower is better)', 'R2 (higher is better)'],
-        ['Minutes', 'Minutes', 'R2 Score']
-    ):
-        bars = ax.bar(short, vals, color=colors[:len(model_names)])
-        ax.set_title(title)
-        ax.set_ylabel(ylabel)
-        ax.set_xticklabels(short, rotation=15, ha='right', fontsize=9)
-        ax.grid(True, alpha=0.3, axis='y')
-        for bar, val in zip(bars, vals):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f'{val:.3f}', ha='center', va='bottom', fontsize=8)
-
-    plt.tight_layout()
-    plt.savefig('model_comparison.png', dpi=150, bbox_inches='tight')
-    print("   Saved: model_comparison.png")
-    plt.close(fig2)
-
-    # Fig 3: Data distributions
-    fig3, axes3 = plt.subplots(2, 3, figsize=(16, 10))
-    fig3.suptitle("Bus Dataset -- Data Distributions", fontsize=14, fontweight='bold')
+    # Fig 2: Data distributions
+    fig2, axes2 = plt.subplots(2, 3, figsize=(16, 10))
+    fig2.suptitle("Bus Dataset -- Data Distributions", fontsize=14, fontweight='bold')
 
     df_orig = df_original.copy()
     df_orig['arrival_datetime'] = pd.to_datetime(
         df_orig['date'].astype(str) + ' ' + df_orig['arrival_time'], errors='coerce')
     df_orig['arrival_hour'] = df_orig['arrival_datetime'].dt.hour
 
-    axes3[0, 0].hist(df_orig['dwell_time_in_seconds'].clip(0, 300),
+    axes2[0, 0].hist(df_orig['dwell_time_in_seconds'].clip(0, 300),
                      bins=50, color='steelblue', edgecolor='black', alpha=0.8)
-    axes3[0, 0].set_title('Dwell Time Distribution (s)')
-    axes3[0, 0].set_xlabel('Dwell Time (s)')
-    axes3[0, 0].grid(True, alpha=0.3)
+    axes2[0, 0].set_title('Dwell Time Distribution (s)')
+    axes2[0, 0].set_xlabel('Dwell Time (s)')
+    axes2[0, 0].grid(True, alpha=0.3)
 
     hc = df_orig['arrival_hour'].value_counts().sort_index()
-    axes3[0, 1].bar(hc.index, hc.values, color='coral')
-    axes3[0, 1].set_title('Arrivals by Hour')
-    axes3[0, 1].set_xlabel('Hour')
-    axes3[0, 1].grid(True, alpha=0.3, axis='y')
+    axes2[0, 1].bar(hc.index, hc.values, color='coral')
+    axes2[0, 1].set_title('Arrivals by Hour')
+    axes2[0, 1].set_xlabel('Hour')
+    axes2[0, 1].grid(True, alpha=0.3, axis='y')
 
     sc = df_orig['bus_stop'].value_counts().head(15)
-    axes3[0, 2].bar(sc.index.astype(str), sc.values, color='green', alpha=0.8)
-    axes3[0, 2].set_title('Top 15 Bus Stops')
-    axes3[0, 2].tick_params(axis='x', rotation=45)
-    axes3[0, 2].grid(True, alpha=0.3, axis='y')
+    axes2[0, 2].bar(sc.index.astype(str), sc.values, color='green', alpha=0.8)
+    axes2[0, 2].set_title('Top 15 Bus Stops')
+    axes2[0, 2].tick_params(axis='x', rotation=45)
+    axes2[0, 2].grid(True, alpha=0.3, axis='y')
 
     dc = df_orig['direction'].value_counts()
-    axes3[1, 0].pie(dc.values,
+    axes2[1, 0].pie(dc.values,
                     labels=[f'Direction {d}' for d in dc.index],
                     autopct='%1.1f%%', colors=['#2196F3', '#FF9800'])
-    axes3[1, 0].set_title('Direction Distribution')
+    axes2[1, 0].set_title('Direction Distribution')
 
     day_c = df_orig['arrival_datetime'].dt.dayofweek.value_counts().sort_index()
     day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    axes3[1, 1].bar([day_labels[i] for i in day_c.index], day_c.values,
+    axes2[1, 1].bar([day_labels[i] for i in day_c.index], day_c.values,
                     color='purple', alpha=0.8)
-    axes3[1, 1].set_title('Arrivals by Day of Week')
-    axes3[1, 1].grid(True, alpha=0.3, axis='y')
+    axes2[1, 1].set_title('Arrivals by Day of Week')
+    axes2[1, 1].grid(True, alpha=0.3, axis='y')
 
-    axes3[1, 2].hist(df_orig['dwell_time_in_seconds'].clip(0, 300),
+    axes2[1, 2].hist(df_orig['dwell_time_in_seconds'].clip(0, 300),
                      bins=50, cumulative=True, density=True,
                      histtype='step', color='red', linewidth=2)
-    axes3[1, 2].set_title('CDF of Dwell Time')
-    axes3[1, 2].grid(True, alpha=0.3)
+    axes2[1, 2].set_title('CDF of Dwell Time')
+    axes2[1, 2].grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.savefig('data_distribution.png', dpi=150, bbox_inches='tight')
     print("   Saved: data_distribution.png")
-    plt.close(fig3)
+    plt.close(fig2)
 
-    # Fig 4: Correlation heatmap
-    fig4, ax4 = plt.subplots(figsize=(10, 8))
+    # Fig 3: Correlation heatmap
+    fig3, ax3 = plt.subplots(figsize=(10, 8))
     sns.heatmap(df_original.select_dtypes(include=[np.number]).corr(),
                 annot=True, fmt='.2f', cmap='coolwarm',
-                center=0, ax=ax4, cbar_kws={'shrink': 0.8})
-    ax4.set_title('Feature Correlation Heatmap', fontsize=14, fontweight='bold')
+                center=0, ax=ax3, cbar_kws={'shrink': 0.8})
+    ax3.set_title('Feature Correlation Heatmap', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig('correlation_heatmap.png', dpi=150, bbox_inches='tight')
     print("   Saved: correlation_heatmap.png")
-    plt.close(fig4)
+    plt.close(fig3)
 
     print("   All visualisations saved successfully.")
 
-# 7. UI LAUNCHER
+# 8. UI LAUNCHER
 
 def launch_bus_tracker_ui():
     """Launch the Bus Tracker UI application."""
     print("\n" + "=" * 70)
-    print("🚀 LAUNCHING BUS TRACKER UI")
+    print("LAUNCHING BUS TRACKER UI")
     print("=" * 70)
     ui_candidates = ['bus_time_tracker_UI.py']
     ui_file = None
@@ -671,16 +585,15 @@ def launch_bus_tracker_ui():
         except Exception as e:
             print(f"❌ Error launching UI: {e}")
     else:
-        print("⚠ UI file not found. Please run 'Bus_trackerUI.py' manually.")
+        print("⚠ UI file not found. Please run 'bus_time_tracker_UI.py' manually.")
 
 
-
-# 8. MAIN PIPELINE
+# 9. MAIN PIPELINE
 
 def main():
     print("\n" + "=" * 70)
     print("BUS ARRIVAL TIME PREDICTION SYSTEM")
-    print("    Linear Regression Family | Improved ML Pipeline v2")
+    print("    Multiple Linear Regression | ML Pipeline")
     print("=" * 70)
 
     # Load
@@ -700,8 +613,8 @@ def main():
     # Feature preparation (includes multicollinearity removal)
     ohe_cols, num_cols, poly_cols, X, y_raw, y_log = prepare_features_for_ml(df_processed)
 
-    # Train & compare
-    results = train_and_compare_models(ohe_cols, num_cols, poly_cols, X, y_raw, y_log)
+    # Train model
+    results = train_model(ohe_cols, num_cols, poly_cols, X, y_raw, y_log)
 
     # Visualise
     plot_all_visualizations(results, df)
@@ -745,7 +658,6 @@ def main():
     print(f"   MAE  : {tm['mae']:.4f} minutes")
     print(f"   RMSE : {tm['rmse']:.4f} minutes")
     print(f"   MAPE : {tm['mape']:.2f} %")
-    print(f"\n   Best overall model : {results['best_model_name']}")
 
     # Launch UI
     launch_bus_tracker_ui()
