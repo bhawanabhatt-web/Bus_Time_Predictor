@@ -563,6 +563,7 @@ def plot_all_visualizations(results, df_original):
     print("   Saved: correlation_heatmap.png")
     plt.close(fig3)
 
+
     print("   All visualisations saved successfully.")
 
 # 8. UI LAUNCHER

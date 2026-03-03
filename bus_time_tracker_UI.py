@@ -72,7 +72,6 @@ class BusTrackerApp(ctk.CTk):
 
     
     # Data loading
-
     def load_data(self):
         if os.path.exists('bus_data.csv'):
             df = pd.read_csv('bus_data.csv')
@@ -81,7 +80,6 @@ class BusTrackerApp(ctk.CTk):
             self.buses     = sorted([str(x) for x in self.df_processed['deviceid'].unique()])
         else:
             self.create_sample_data()
-
         if os.path.exists('bus_arrival_mlr_model.pkl'):
             md = joblib.load('bus_arrival_mlr_model.pkl')
             self.model_info      = md
@@ -110,7 +108,6 @@ class BusTrackerApp(ctk.CTk):
         return d.dropna()
 
     # Live clock
-
     def _start_clock(self):
         def tick():
             if hasattr(self, '_clock_label'):
@@ -123,7 +120,6 @@ class BusTrackerApp(ctk.CTk):
         tick()
 
     # UI construction 
-    
     def create_ui(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=14)
@@ -152,7 +148,7 @@ class BusTrackerApp(ctk.CTk):
 
         self._title_lbl = ctk.CTkLabel(
             title_stack,
-            text="Smart Bus Tracker",
+            text="Bus Arrival Time Predictor",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=self.colors['light'])
         self._title_lbl.pack(anchor="w")
@@ -306,7 +302,6 @@ class BusTrackerApp(ctk.CTk):
                          text_color=self.colors['subtext']).pack()
             
     #  Results Section 
-
     def create_results_section(self, parent):
         results_frame = ctk.CTkFrame(parent, fg_color=self.colors['dark'],
                                       corner_radius=15,
@@ -580,7 +575,7 @@ class BusTrackerApp(ctk.CTk):
     def show_no_results(self):
         f = ctk.CTkFrame(self.results_scroll, fg_color="transparent")
         f.pack(expand=True, fill="both", pady=50)
-        ctk.CTkLabel(f, text="😔", font=ctk.CTkFont(size=58)).pack()
+        ctk.CTkLabel(f, text=" ", font=ctk.CTkFont(size=58)).pack()
         ctk.CTkLabel(f, text="No buses found for this route",
                      font=ctk.CTkFont(size=16, weight="bold"),
                      text_color=self.colors['text']).pack(pady=(8, 4))
